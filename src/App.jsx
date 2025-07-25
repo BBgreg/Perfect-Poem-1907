@@ -69,7 +69,7 @@ function App() {
         poemType: formData.poemType || 'Free Verse',
         rhymeScheme: formData.rhymePattern || 'None (Free Verse)', // Added fallback to ensure non-empty value
         description: formData.description || '',
-        lineCount: formData.lineCount === 'blank' ? '' : (formData.lineCount || ''),
+        lineCount: formData.lineCount || '', // Now supports custom input including numbers, ranges, or empty
         lineLength: formData.lineLength || 'Medium'
       }
 

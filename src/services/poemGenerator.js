@@ -9,9 +9,12 @@ export const generatePoem = async (poemRequest) => {
   const payload = {
     poemType: poemType || 'Free Verse',
     rhymeScheme: rhymeScheme || 'None (Free Verse)', // Added fallback to ensure non-empty value
-    lineCount: lineCount === 'blank' ? '' : (lineCount || ''),
+    lineCount: lineCount || '', // Now supports custom input including numbers, ranges, or empty
     lineLength: lineLength || 'Medium',
-    description: description || ''
+    description: description || '',
+    // Add flags to ensure strict adherence to user specifications
+    strictLineCount: true, // ALWAYS enforce strict line count when provided
+    strictRhymeScheme: rhymeScheme !== 'None (Free Verse)' && rhymeScheme !== 'Random (AI Chooses)' // Flag to enforce strict rhyme scheme
   }
 
   // Final safety check - ensure rhymeScheme is never empty
@@ -56,6 +59,19 @@ export const generatePoem = async (poemRequest) => {
       throw new Error('The poem generation service returned an unexpected response. Please try again.')
     }
 
+    // Verify line count if specified
+    if (lineCount && !isNaN(parseInt(lineCount, 10))) {
+      const expectedCount = parseInt(lineCount, 10);
+      const actualCount = data.poem.split('\n').length;
+      
+      console.log(`Perfect Poem: Line count verification - Expected: ${expectedCount}, Actual: ${actualCount}`);
+      
+      if (actualCount !== expectedCount) {
+        console.error(`Perfect Poem: Line count mismatch - Expected ${expectedCount}, got ${actualCount}`);
+        // In production, you might want to reject this response or attempt to fix it
+      }
+    }
+
     console.log('Perfect Poem: Successfully generated poem via Edge Function')
     return data.poem
 
@@ -90,7 +106,88 @@ export const generatePoem = async (poemRequest) => {
 
 // Enhanced fallback function for development/testing
 export const generateSamplePoem = (poemRequest) => {
-  const { poemType, description } = poemRequest
+  const { poemType, description, lineCount, rhymeScheme } = poemRequest
+  
+  // For poems with exact line count
+  if (lineCount && !isNaN(parseInt(lineCount, 10))) {
+    const count = parseInt(lineCount, 10);
+    const lines = [];
+    
+    // Use varied rhyme words for demonstration
+    const rhymeWords = {
+      'A': ['day', 'way', 'say', 'play', 'stay', 'bay', 'ray', 'pray', 'clay', 'sway'],
+      'B': ['night', 'light', 'bright', 'sight', 'might', 'flight', 'right', 'height', 'tight', 'delight'],
+      'C': ['dream', 'gleam', 'stream', 'beam', 'theme', 'scheme', 'cream', 'team', 'seam', 'supreme'],
+      'D': ['soul', 'goal', 'whole', 'toll', 'role', 'bowl', 'scroll', 'stroll', 'foal', 'console']
+    };
+    
+    // Apply rhyme pattern if specified
+    if (rhymeScheme && rhymeScheme !== 'None (Free Verse)' && rhymeScheme !== 'Random (AI Chooses)') {
+      const pattern = rhymeScheme.replace(/[^A-F]/g, ''); // Extract just the letters
+      
+      for (let i = 0; i < count; i++) {
+        const rhymeGroup = pattern[i % pattern.length];
+        const wordIndex = i % 10; // Cycle through the words in each rhyme group
+        const rhymeWord = rhymeWords[rhymeGroup] ? rhymeWords[rhymeGroup][wordIndex] : `word${i}`;
+        lines.push(`Line ${i+1}: ${description} - ending with ${rhymeWord}`);
+      }
+    } else {
+      // No specific rhyme pattern
+      for (let i = 0; i < count; i++) {
+        lines.push(`Line ${i+1}: ${description} - free verse line`);
+      }
+    }
+    
+    // GUARANTEE we have exactly the right number of lines
+    while (lines.length > count) {
+      lines.pop();
+    }
+    
+    while (lines.length < count) {
+      lines.push(`Line ${lines.length+1}: ${description} - additional line to meet exact count`);
+    }
+    
+    return lines.join('\n');
+  }
+  
+  // For Couplet, respect the user-specified line count if provided
+  if (poemType === 'Couplet' && lineCount) {
+    const count = parseInt(lineCount, 10);
+    if (!isNaN(count) && count > 0) {
+      const lines = [];
+      
+      // Use varied rhyme words for sample couplets
+      const rhymeWords = [
+        ['grace', 'face'],
+        ['light', 'bright'],
+        ['sky', 'high'],
+        ['dream', 'gleam'],
+        ['heart', 'start']
+      ];
+      
+      for (let i = 0; i < count; i += 2) {
+        const rhymePair = rhymeWords[Math.floor(i/2) % rhymeWords.length];
+        lines.push(`In ${description} we find our ${rhymePair[0]},`);
+        // If this would be the last line and we need an odd number, adjust the final line
+        if (i + 1 === count - 1) {
+          lines.push(`With beauty shining on love's ${rhymePair[1]}.`);
+        } else if (i + 1 < count) {
+          lines.push(`A gentle smile upon love's ${rhymePair[1]}.`);
+        }
+      }
+      
+      // GUARANTEE we have exactly the right number of lines
+      while (lines.length > count) {
+        lines.pop();
+      }
+      
+      while (lines.length < count) {
+        lines.push(`Additional line ${lines.length+1} to meet exact count of ${count}.`);
+      }
+      
+      return lines.join('\n');
+    }
+  }
   
   const samplePoems = {
     'Free Verse': `In the garden of thoughts where ${description} blooms,
@@ -168,7 +265,28 @@ The ${description} returns with each new day.
 So let us not forget the way
 The ${description} makes us blessed,
 In patterns that never decay.
-The ${description} returns with each new day.`
+The ${description} returns with each new day.`,
+
+    'Couplet': `In ${description} we find our grace,
+A gentle smile upon love's face.`,
+
+    'Ode': `O ${description}, magnificent and bright,
+You fill our world with endless light!
+In every moment, every day,
+You show us beauty's perfect way.
+
+Through seasons changing, time's sweet flow,
+You help our weary spirits grow.
+With majesty that knows no end,
+You are our guide, our truest friend.
+
+Let poets sing your praise in verse,
+Let hearts with gratitude rehearse
+The wonder that you bring to all,
+In spring's renewal, autumn's call.
+
+Forever may your essence shine,
+O ${description}, forever thine!`
   }
 
   return samplePoems[poemType] || samplePoems['Free Verse']
