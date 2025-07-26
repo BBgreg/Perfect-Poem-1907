@@ -12,11 +12,17 @@ export const useSubscription = () => {
 
   const fetchSubscriptionData = async () => {
     if (!user) {
-      setSubscriptionData({ freePoems: 0, isSubscribed: false, loading: false })
+      setSubscriptionData({
+        freePoems: 0,
+        isSubscribed: false,
+        loading: false
+      })
       return
     }
 
     try {
+      console.log('Fetching subscription data for user:', user.id)
+      
       // Get or create user profile
       const { data: profile, error } = await supabase
         .from('user_profiles_sub_mgmt')
@@ -26,6 +32,7 @@ export const useSubscription = () => {
 
       if (error && error.code === 'PGRST116') {
         // Profile doesn't exist, create it
+        console.log('Creating new user profile for subscription management')
         const { data: newProfile, error: createError } = await supabase
           .from('user_profiles_sub_mgmt')
           .insert({
@@ -38,10 +45,15 @@ export const useSubscription = () => {
 
         if (createError) {
           console.error('Error creating user profile:', createError)
-          setSubscriptionData({ freePoems: 0, isSubscribed: false, loading: false })
+          setSubscriptionData({
+            freePoems: 0,
+            isSubscribed: false,
+            loading: false
+          })
           return
         }
-
+        
+        console.log('New profile created:', newProfile)
         setSubscriptionData({
           freePoems: newProfile.free_poems_generated,
           isSubscribed: newProfile.is_subscribed,
@@ -49,8 +61,13 @@ export const useSubscription = () => {
         })
       } else if (error) {
         console.error('Error fetching subscription data:', error)
-        setSubscriptionData({ freePoems: 0, isSubscribed: false, loading: false })
+        setSubscriptionData({
+          freePoems: 0,
+          isSubscribed: false,
+          loading: false
+        })
       } else {
+        console.log('Subscription data fetched:', profile)
         setSubscriptionData({
           freePoems: profile.free_poems_generated,
           isSubscribed: profile.is_subscribed,
@@ -59,12 +76,37 @@ export const useSubscription = () => {
       }
     } catch (error) {
       console.error('Error in fetchSubscriptionData:', error)
-      setSubscriptionData({ freePoems: 0, isSubscribed: false, loading: false })
+      setSubscriptionData({
+        freePoems: 0,
+        isSubscribed: false,
+        loading: false
+      })
     }
   }
 
   useEffect(() => {
     fetchSubscriptionData()
+  }, [user])
+
+  // Check URL for session_id parameter on component mount
+  useEffect(() => {
+    const checkSessionParam = async () => {
+      if (!user) return
+      
+      const urlParams = new URLSearchParams(window.location.search)
+      const sessionId = urlParams.get('session_id')
+      
+      if (sessionId) {
+        console.log('Detected successful Stripe payment, refreshing subscription data')
+        // Clear the URL parameter
+        window.history.replaceState({}, document.title, window.location.pathname)
+        
+        // Force a refresh of subscription data to get updated status
+        await fetchSubscriptionData()
+      }
+    }
+    
+    checkSessionParam()
   }, [user])
 
   const incrementFreePoems = async () => {
@@ -97,6 +139,7 @@ export const useSubscription = () => {
 
   const createCheckoutSession = async () => {
     try {
+      console.log('Creating Stripe checkout session')
       const { data, error } = await supabase.functions.invoke('create-checkout-session', {
         body: {},
         headers: {
@@ -108,7 +151,8 @@ export const useSubscription = () => {
         console.error('Error creating checkout session:', error)
         throw new Error('Failed to create checkout session')
       }
-
+      
+      console.log('Checkout session created, redirecting to:', data.url)
       return data.url
     } catch (error) {
       console.error('Error in createCheckoutSession:', error)
@@ -116,8 +160,9 @@ export const useSubscription = () => {
     }
   }
 
-  const refreshSubscriptionData = () => {
-    fetchSubscriptionData()
+  const refreshSubscriptionData = async () => {
+    console.log('Manually refreshing subscription data')
+    await fetchSubscriptionData()
   }
 
   return {

@@ -37,23 +37,44 @@ function App() {
 
   // Check for successful subscription on component mount
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search)
-    const sessionId = urlParams.get('session_id')
-    
-    if (sessionId) {
-      // Clear the URL parameter
-      window.history.replaceState({}, document.title, window.location.pathname)
+    const checkStripeSession = async () => {
+      const urlParams = new URLSearchParams(window.location.search)
+      const sessionId = urlParams.get('session_id')
       
-      // Refresh subscription data
-      setTimeout(() => {
-        refreshSubscriptionData()
-        setConfirmationMessage("Subscription activated! You now have unlimited access to poem generation.")
-        setConfirmationType("success")
-        setConfirmationDismissible(true)
-        setShowSaveConfirmation(true)
-      }, 2000)
+      if (sessionId) {
+        console.log('Detected Stripe session ID in URL, handling subscription activation')
+        // Clear the URL parameter
+        window.history.replaceState({}, document.title, window.location.pathname)
+        
+        // Refresh subscription data with a delay to allow webhook processing
+        setTimeout(async () => {
+          await refreshSubscriptionData()
+          
+          // Check if subscription is active after refresh
+          if (isSubscribed) {
+            setConfirmationMessage("Subscription activated! You now have unlimited access to poem generation.")
+            setConfirmationType("success")
+            setConfirmationDismissible(true)
+            setShowSaveConfirmation(true)
+          } else {
+            console.log('Subscription not yet active after refresh, trying again')
+            // Try one more time after a longer delay
+            setTimeout(async () => {
+              await refreshSubscriptionData()
+              setConfirmationMessage("Subscription activated! You now have unlimited access to poem generation.")
+              setConfirmationType("success")
+              setConfirmationDismissible(true)
+              setShowSaveConfirmation(true)
+            }, 5000)
+          }
+        }, 2000)
+      }
     }
-  }, [refreshSubscriptionData])
+    
+    if (user) {
+      checkStripeSession()
+    }
+  }, [user, refreshSubscriptionData, isSubscribed])
 
   // If we have an unsaved poem and the user logs in, save it
   useEffect(() => {
