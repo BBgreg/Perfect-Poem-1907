@@ -9,6 +9,7 @@ export const useSubscription = () => {
     isSubscribed: false,
     loading: true
   })
+  const [lastRefreshed, setLastRefreshed] = useState(0)
 
   const fetchSubscriptionData = async () => {
     if (!user) {
@@ -74,6 +75,8 @@ export const useSubscription = () => {
           loading: false
         })
       }
+      
+      setLastRefreshed(Date.now())
     } catch (error) {
       console.error('Error in fetchSubscriptionData:', error)
       setSubscriptionData({
@@ -84,8 +87,44 @@ export const useSubscription = () => {
     }
   }
 
+  // Fetch subscription data when user changes
   useEffect(() => {
     fetchSubscriptionData()
+  }, [user])
+
+  // Set up realtime subscription updates when user is available
+  useEffect(() => {
+    if (!user) return
+    
+    console.log('Setting up realtime subscription for user_profiles_sub_mgmt')
+    
+    const channel = supabase
+      .channel('profile-updates')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'user_profiles_sub_mgmt',
+          filter: `user_id=eq.${user.id}`
+        }, 
+        (payload) => {
+          console.log('Realtime update received for user profile:', payload)
+          if (payload.new) {
+            console.log('Updating subscription data from realtime event:', payload.new)
+            setSubscriptionData({
+              freePoems: payload.new.free_poems_generated,
+              isSubscribed: payload.new.is_subscribed,
+              loading: false
+            })
+          }
+        }
+      )
+      .subscribe()
+      
+    return () => {
+      console.log('Unsubscribing from realtime updates')
+      supabase.removeChannel(channel)
+    }
   }, [user])
 
   // Check URL for session_id parameter on component mount
@@ -98,11 +137,29 @@ export const useSubscription = () => {
       
       if (sessionId) {
         console.log('Detected successful Stripe payment, refreshing subscription data')
+        console.log('Session ID from URL:', sessionId)
+        
         // Clear the URL parameter
         window.history.replaceState({}, document.title, window.location.pathname)
         
         // Force a refresh of subscription data to get updated status
         await fetchSubscriptionData()
+        
+        // Set up periodic checks for subscription status
+        const checkInterval = setInterval(async () => {
+          console.log('Running periodic check for subscription status')
+          await fetchSubscriptionData()
+          
+          // If subscription is active or we've tried for 30 seconds, clear the interval
+          if (subscriptionData.isSubscribed || Date.now() - lastRefreshed > 30000) {
+            clearInterval(checkInterval)
+          }
+        }, 3000)
+        
+        // Clean up interval after 30 seconds max
+        setTimeout(() => {
+          clearInterval(checkInterval)
+        }, 30000)
       }
     }
     
@@ -113,6 +170,7 @@ export const useSubscription = () => {
     if (!user || subscriptionData.isSubscribed) return
 
     try {
+      console.log('Incrementing free poems count for user:', user.id)
       const { data, error } = await supabase
         .from('user_profiles_sub_mgmt')
         .update({
@@ -128,6 +186,7 @@ export const useSubscription = () => {
         return
       }
 
+      console.log('Free poems incremented successfully:', data)
       setSubscriptionData(prev => ({
         ...prev,
         freePoems: data.free_poems_generated
@@ -140,10 +199,20 @@ export const useSubscription = () => {
   const createCheckoutSession = async () => {
     try {
       console.log('Creating Stripe checkout session')
+      
+      // Get current session for auth token
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        throw new Error('No active session')
+      }
+      
+      console.log('Using auth token for checkout session creation')
+      
       const { data, error } = await supabase.functions.invoke('create-checkout-session', {
         body: {},
         headers: {
-          Authorization: `Bearer ${supabase.auth.getSession().then(s => s.data.session?.access_token)}`
+          Authorization: `Bearer ${session.access_token}`
         }
       })
 
@@ -162,7 +231,7 @@ export const useSubscription = () => {
 
   const refreshSubscriptionData = async () => {
     console.log('Manually refreshing subscription data')
-    await fetchSubscriptionData()
+    return await fetchSubscriptionData()
   }
 
   return {

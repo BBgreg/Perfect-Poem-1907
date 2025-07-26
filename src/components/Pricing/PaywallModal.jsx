@@ -2,18 +2,25 @@ import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSubscription } from '../../hooks/useSubscription'
 import SafeIcon from '../../common/SafeIcon'
-import * as FiIcons from 'react-icons/fi'
+import * as FiIcons from 'react-icons/fi' 
 
-const { FiX, FiStar, FiCheck, FiCreditCard, FiZap } = FiIcons
+const { FiX, FiStar, FiCheck, FiCreditCard, FiZap } = FiIcons 
 
 const PaywallModal = ({ isOpen, onClose }) => {
-  const { createCheckoutSession } = useSubscription()
+  const { createCheckoutSession, refreshSubscriptionData } = useSubscription()
   const [loading, setLoading] = useState(false)
-
+  
   const handleSubscribe = async () => {
     setLoading(true)
+    
     try {
+      console.log('Creating checkout session from PaywallModal')
+      
+      // Force refresh subscription data first to ensure we have latest status
+      await refreshSubscriptionData()
+      
       const checkoutUrl = await createCheckoutSession()
+      console.log('Redirecting to Stripe checkout:', checkoutUrl)
       window.location.href = checkoutUrl
     } catch (error) {
       console.error('Error creating checkout session:', error)
@@ -22,7 +29,7 @@ const PaywallModal = ({ isOpen, onClose }) => {
       setLoading(false)
     }
   }
-
+  
   return (
     <AnimatePresence>
       {isOpen && (
@@ -48,11 +55,9 @@ const PaywallModal = ({ isOpen, onClose }) => {
               >
                 <SafeIcon icon={FiX} className="w-5 h-5" />
               </button>
-              
               <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 rounded-full mb-4">
                 <SafeIcon icon={FiZap} className="w-8 h-8" />
               </div>
-              
               <h2 className="text-2xl font-bold mb-2">Unlock Unlimited Poems!</h2>
               <p className="text-primary-100">
                 You've enjoyed 3 free poems! Continue your poetic journey with unlimited access.
