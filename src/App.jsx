@@ -9,25 +9,25 @@ import PoemForm from './components/PoemGenerator/PoemForm'
 import PoemDisplay from './components/PoemGenerator/PoemDisplay'
 import BlurredPoemDisplay from './components/PoemGenerator/BlurredPoemDisplay'
 import PoemLibrary from './components/PoemLibrary/PoemLibrary'
+import PricingSection from './components/Pricing/PricingSection'
 import AuthModal from './components/Auth/AuthModal'
 import SaveConfirmation from './components/PoemGenerator/SaveConfirmation'
 import SafeIcon from './common/SafeIcon'
 import * as FiIcons from 'react-icons/fi'
 
-const {FiEdit3,FiBook,FiHome}=FiIcons
+const {FiEdit3,FiBook,FiHome,FiDollarSign}=FiIcons
 
 function App() {
   const {user,loading: authLoading}=useAuth()
   const {createPoem}=usePoems()
-  
   const [currentView,setCurrentView]=useState('create') // Start directly in create mode
   const [currentPoem,setCurrentPoem]=useState(null)
   const [generatingPoem,setGeneratingPoem]=useState(false)
   const [showAuthModal,setShowAuthModal]=useState(false)
   const [showSaveConfirmation,setShowSaveConfirmation]=useState(false)
-  const [confirmationMessage, setConfirmationMessage] = useState("")
-  const [confirmationType, setConfirmationType] = useState("success")
-  const [confirmationDismissible, setConfirmationDismissible] = useState(false)
+  const [confirmationMessage,setConfirmationMessage]=useState("")
+  const [confirmationType,setConfirmationType]=useState("success")
+  const [confirmationDismissible,setConfirmationDismissible]=useState(false)
   const [unsavedPoem,setUnsavedPoem]=useState(null)
   const [generationError,setGenerationError]=useState('')
 
@@ -45,10 +45,8 @@ function App() {
             setConfirmationType("success")
             setConfirmationDismissible(false)
             setShowSaveConfirmation(true)
-            
             // Clear the unsaved poem
             setUnsavedPoem(null)
-            
             // Hide save confirmation after 3 seconds
             setTimeout(()=> {
               setShowSaveConfirmation(false)
@@ -59,7 +57,6 @@ function App() {
         }
       }
     }
-    
     saveUnsavedPoem()
   },[user,unsavedPoem])
 
@@ -70,10 +67,8 @@ function App() {
   const handleGeneratePoem=async (formData)=> {
     setGeneratingPoem(true)
     setGenerationError('')
-    
     try {
       console.log('Perfect Poem: Raw form data received:',formData)
-      
       // Construct the payload with proper validation and defaults
       const payload={
         poemType: formData.poemType || 'Free Verse',
@@ -82,7 +77,7 @@ function App() {
         lineCount: formData.lineCount || '',// Now supports custom input including numbers,ranges,or empty
         lineLength: formData.lineLength || 'Medium'
       }
-      
+
       // Add comprehensive logging
       console.log('Perfect Poem: Sending payload to Edge Function:',payload)
       console.log('Perfect Poem: Payload validation:')
@@ -92,25 +87,24 @@ function App() {
       console.log(' - lineCount:',payload.lineCount,'(type:',typeof payload.lineCount,')')
       console.log(' - lineLength:',payload.lineLength,'(type:',typeof payload.lineLength,')')
       console.log('Perfect Poem: JSON stringified payload:',JSON.stringify(payload,null,2))
-      
+
       // Validate required fields
       if (!payload.description || payload.description.trim()==='') {
         throw new Error('Description is required to generate a poem')
       }
-      
       if (!payload.poemType || payload.poemType.trim()==='') {
         throw new Error('Poem type is required to generate a poem')
       }
-      
+
       // Final check to ensure rhymeScheme is never empty
       if (!payload.rhymeScheme || payload.rhymeScheme.trim()==='') {
         console.log('Perfect Poem: Empty rhymeScheme detected,using fallback value')
         payload.rhymeScheme='None (Free Verse)'
       }
-      
+
       // Generate poem using Supabase Edge Function
       const generatedText=await generatePoem(payload)
-      
+
       // Create poem data object
       const poemData={
         poem_type: payload.poemType,
@@ -121,18 +115,17 @@ function App() {
         line_length_requested: payload.lineLength,
         created_at: new Date().toISOString()
       }
-      
+
       // Set current poem for display regardless of authentication
       setCurrentPoem({
         ...poemData,
         id: 'temp-' + Date.now(),
       })
-      
+
       // If user is authenticated,save to database
       if (user) {
         console.log('User authenticated,saving poem to database')
         const {data,error}=await createPoem(poemData)
-        
         if (error) {
           console.error('Error saving poem:',error)
         } else {
@@ -141,7 +134,6 @@ function App() {
           setConfirmationType("success")
           setConfirmationDismissible(false)
           setShowSaveConfirmation(true)
-          
           // Hide save confirmation after 3 seconds
           setTimeout(()=> {
             setShowSaveConfirmation(false)
@@ -151,7 +143,7 @@ function App() {
         // Store unsaved poem data to be saved after authentication
         setUnsavedPoem(poemData)
       }
-      
+
       setCurrentView('result')
     } catch (error) {
       console.error('Perfect Poem: Error generating poem:',error)
@@ -168,14 +160,15 @@ function App() {
   const handleRetryGeneration=()=> {
     setGenerationError('')
   }
-  
-  const handleDismissConfirmation = () => {
+
+  const handleDismissConfirmation=()=> {
     setShowSaveConfirmation(false)
   }
 
   const navigation=[
     {id: 'home',label: 'Home',icon: FiHome},
     {id: 'create',label: 'Create',icon: FiEdit3},
+    {id: 'pricing',label: 'Pricing',icon: FiDollarSign},
     {id: 'library',label: 'Library',icon: FiBook},
   ]
 
@@ -193,7 +186,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50">
       <Header />
-      
+
       {user && (
         <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -247,6 +240,17 @@ function App() {
             </motion.div>
           )}
 
+          {currentView==='pricing' && (
+            <motion.div
+              key="pricing"
+              initial={{opacity: 0,x: 20}}
+              animate={{opacity: 1,x: 0}}
+              exit={{opacity: 0,x: -20}}
+            >
+              <PricingSection />
+            </motion.div>
+          )}
+
           {currentView==='result' && currentPoem && (
             <motion.div
               key="result"
@@ -296,11 +300,14 @@ function App() {
         </AnimatePresence>
       </main>
 
-      <AuthModal isOpen={showAuthModal} onClose={()=> setShowAuthModal(false)} />
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={()=> setShowAuthModal(false)}
+      />
 
       <AnimatePresence>
         {showSaveConfirmation && (
-          <SaveConfirmation 
+          <SaveConfirmation
             visible={showSaveConfirmation}
             message={confirmationMessage}
             type={confirmationType}
