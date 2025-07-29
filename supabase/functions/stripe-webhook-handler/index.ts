@@ -51,12 +51,14 @@ serve(async (req) => {
         const customerId = session.customer 
         const subscriptionId = session.subscription 
         const sessionId = session.id
+        const customerEmail = session.customer_details?.email || ''
 
         console.log('Checkout session completed webhook received:', {
           userId,
           customerId,
           subscriptionId,
           sessionId,
+          customerEmail,
           session_status: session.status,
           payment_status: session.payment_status
         })
@@ -71,12 +73,30 @@ serve(async (req) => {
 
         console.log('Updating user subscription status for user:', userId)
 
-        // First check if user profile exists
+        // First try to get user email from auth.users if not provided in session
+        let userEmail = customerEmail
+        if (!userEmail) {
+          console.log('Getting user email from auth.users')
+          const { data: userData, error: userError } = await supabase
+            .from('auth.users')
+            .select('email')
+            .eq('id', userId)
+            .single()
+            
+          if (userError) {
+            console.error('Error getting user email:', userError)
+          } else if (userData) {
+            userEmail = userData.email
+            console.log('Found user email:', userEmail)
+          }
+        }
+
+        // First check if user profile exists in user_profiles_sub_mgmt
         console.log('Checking if user profile exists in user_profiles_sub_mgmt table')
         const { data: existingProfile, error: fetchError } = await supabase
           .from('user_profiles_sub_mgmt')
           .select('*')
-          .eq('user_id', userId)
+          .eq('id', userId)
           .single()
 
         console.log('Existing profile check result:', { 
@@ -85,9 +105,10 @@ serve(async (req) => {
           fetchErrorDetails: fetchError ? JSON.stringify(fetchError) : 'none' 
         })
 
-        // Prepare update data
+        // Prepare update data for user_profiles_sub_mgmt
         const profileData = {
-          user_id: userId,
+          id: userId,
+          email: userEmail, // Include email in the profile data
           is_subscribed: true,
           stripe_customer_id: customerId,
           stripe_subscription_id: subscriptionId,
@@ -97,24 +118,44 @@ serve(async (req) => {
         
         console.log('Preparing to update user profile with data:', profileData)
 
-        // Update or insert user profile with subscription info
+        // Update or insert user profile with subscription info in user_profiles_sub_mgmt
         const { data: updateData, error: updateError } = await supabase
           .from('user_profiles_sub_mgmt')
           .upsert(profileData)
           .select()
 
         if (updateError) {
-          console.error('Error updating user profile:', updateError)
+          console.error('Error updating user profile in user_profiles_sub_mgmt:', updateError)
           console.error('Error details:', JSON.stringify(updateError))
-          return new Response(
-            JSON.stringify({ 
-              error: 'Database update failed',
-              details: updateError
-            }),
-            { status: 500, headers }
-          )
+          
+          // Try backup table
+          console.log('Trying to update profiles table as backup')
+          const { data: backupData, error: backupError } = await supabase
+            .from('profiles')
+            .upsert({
+              id: userId,
+              is_subscribed: true,
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscriptionId,
+              free_poems_generated: 0,
+              updated_at: new Date().toISOString()
+            })
+            .select()
+            
+          if (backupError) {
+            console.error('Error updating backup profiles table:', backupError)
+            return new Response(
+              JSON.stringify({ 
+                error: 'Database update failed for both tables',
+                details: { primary: updateError, backup: backupError }
+              }),
+              { status: 500, headers }
+            )
+          } else {
+            console.log('Successfully updated backup profiles table:', backupData)
+          }
         } else {
-          console.log('Successfully updated user subscription status:', updateData)
+          console.log('Successfully updated user subscription status in user_profiles_sub_mgmt:', updateData)
         }
         break 
 
@@ -131,27 +172,76 @@ serve(async (req) => {
           subscriptionId: subscription.id
         })
 
-        // Find user by stripe customer ID and update subscription status
-        console.log('Looking up user by stripe_customer_id:', customerIdFromSub)
+        // Find user by stripe customer ID in user_profiles_sub_mgmt
+        console.log('Looking up user by stripe_customer_id in user_profiles_sub_mgmt:', customerIdFromSub)
         const { data: customerData, error: customerLookupError } = await supabase
           .from('user_profiles_sub_mgmt')
-          .select('user_id')
+          .select('id, email')
           .eq('stripe_customer_id', customerIdFromSub)
           .single()
 
         if (customerLookupError) {
-          console.error('Error finding user by customer ID:', customerLookupError)
-          console.error('Error details:', JSON.stringify(customerLookupError))
-          return new Response(
-            JSON.stringify({ 
-              error: 'User lookup failed',
-              details: customerLookupError
-            }),
-            { status: 500, headers }
-          )
-        } else if (customerData) {
-          console.log('Found user for customer ID:', customerData)
+          console.error('Error finding user by customer ID in user_profiles_sub_mgmt:', customerLookupError)
           
+          // Try backup table
+          console.log('Looking up user by stripe_customer_id in profiles table')
+          const { data: backupCustomerData, error: backupLookupError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('stripe_customer_id', customerIdFromSub)
+            .single()
+            
+          if (backupLookupError) {
+            console.error('Error finding user in backup profiles table:', backupLookupError)
+            return new Response(
+              JSON.stringify({ 
+                error: 'User lookup failed in both tables',
+                details: { primary: customerLookupError, backup: backupLookupError }
+              }),
+              { status: 500, headers }
+            )
+          } else if (backupCustomerData) {
+            console.log('Found user in backup profiles table:', backupCustomerData)
+            
+            // Update subscription status in both tables for consistency
+            // Update profiles table
+            const { error: backupUpdateError } = await supabase
+              .from('profiles')
+              .update({
+                is_subscribed: isActive,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', backupCustomerData.id)
+            
+            if (backupUpdateError) {
+              console.error('Error updating subscription status in profiles:', backupUpdateError)
+            } else {
+              console.log('Successfully updated subscription status in profiles table')
+            }
+            
+            // Try to update user_profiles_sub_mgmt as well
+            const { error: mainUpdateError } = await supabase
+              .from('user_profiles_sub_mgmt')
+              .update({
+                is_subscribed: isActive,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', backupCustomerData.id)
+            
+            if (mainUpdateError) {
+              console.error('Error updating user_profiles_sub_mgmt after backup lookup:', mainUpdateError)
+            }
+          } else {
+            console.error('No user found for customer ID in either table:', customerIdFromSub)
+            return new Response(
+              JSON.stringify({ error: 'No user found for customer ID' }),
+              { status: 404, headers }
+            )
+          }
+        } else if (customerData) {
+          console.log('Found user for customer ID in user_profiles_sub_mgmt:', customerData)
+          
+          // Update subscription status in user_profiles_sub_mgmt
           console.log('Updating subscription status to:', isActive)
           const { data: subUpdateData, error: subUpdateError } = await supabase
             .from('user_profiles_sub_mgmt')
@@ -159,22 +249,54 @@ serve(async (req) => {
               is_subscribed: isActive,
               updated_at: new Date().toISOString()
             })
-            .eq('user_id', customerData.user_id)
+            .eq('id', customerData.id)
             .select()
 
           if (subUpdateError) {
-            console.error('Error updating subscription status:', subUpdateError)
+            console.error('Error updating subscription status in user_profiles_sub_mgmt:', subUpdateError)
             console.error('Error details:', JSON.stringify(subUpdateError))
-            return new Response(
-              JSON.stringify({ 
-                error: 'Subscription update failed',
-                details: subUpdateError
-              }),
-              { status: 500, headers }
-            )
+            
+            // Try backup table
+            console.log('Trying to update subscription status in profiles table')
+            const { error: backupUpdateError } = await supabase
+              .from('profiles')
+              .update({
+                is_subscribed: isActive,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', customerData.id)
+              
+            if (backupUpdateError) {
+              console.error('Error updating backup profiles table:', backupUpdateError)
+              return new Response(
+                JSON.stringify({ 
+                  error: 'Subscription update failed for both tables',
+                  details: { primary: subUpdateError, backup: backupUpdateError }
+                }),
+                { status: 500, headers }
+              )
+            } else {
+              console.log('Successfully updated subscription status in backup profiles table')
+            }
           } else {
-            console.log('Successfully updated subscription status for user:', customerData.user_id)
+            console.log('Successfully updated subscription status in user_profiles_sub_mgmt for user:', customerData.id)
             console.log('Updated data:', subUpdateData)
+            
+            // For consistency, also update the profiles table
+            console.log('Updating profiles table for consistency')
+            const { error: consistencyError } = await supabase
+              .from('profiles')
+              .update({
+                is_subscribed: isActive,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', customerData.id)
+              
+            if (consistencyError) {
+              console.error('Error updating profiles table for consistency:', consistencyError)
+            } else {
+              console.log('Successfully updated profiles table for consistency')
+            }
           }
         } else {
           console.error('No user found for customer ID:', customerIdFromSub)

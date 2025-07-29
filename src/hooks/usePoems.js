@@ -26,7 +26,7 @@ export const usePoems = () => {
         console.error('Error fetching poems:', error)
         throw error
       }
-      
+
       console.log('Fetched poems:', data)
       setPoems(data || [])
     } catch (error) {
@@ -51,10 +51,7 @@ export const usePoems = () => {
       console.log('Creating poem with data:', poemData)
       const { data, error } = await supabase
         .from('poems')
-        .insert([{
-          ...poemData,
-          user_id: user.id
-        }])
+        .insert([{ ...poemData, user_id: user.id }])
         .select()
         .single()
 
@@ -62,7 +59,7 @@ export const usePoems = () => {
         console.error('Error creating poem:', error)
         throw error
       }
-      
+
       console.log('Created poem:', data)
       setPoems(prev => [data, ...prev])
       return { data, error: null }
@@ -85,7 +82,7 @@ export const usePoems = () => {
         .single()
 
       if (error) throw error
-      
+
       setPoems(prev => prev.map(poem => 
         poem.id === id ? { ...poem, ...data } : poem
       ))
@@ -107,7 +104,7 @@ export const usePoems = () => {
         .eq('user_id', user.id)
 
       if (error) throw error
-      
+
       setPoems(prev => prev.filter(poem => poem.id !== id))
       return { error: null }
     } catch (error) {

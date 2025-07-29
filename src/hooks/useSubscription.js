@@ -24,51 +24,94 @@ export const useSubscription = () => {
     try {
       console.log('Fetching subscription data for user:', user.id)
       
-      // Get or create user profile
+      // Try to get user profile from user_profiles_sub_mgmt table first
       const { data: profile, error } = await supabase
         .from('user_profiles_sub_mgmt')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('id', user.id)
         .single()
 
       if (error && error.code === 'PGRST116') {
-        // Profile doesn't exist, create it
-        console.log('Creating new user profile for subscription management')
+        // Profile doesn't exist in user_profiles_sub_mgmt, create it
+        console.log('Creating new user profile in user_profiles_sub_mgmt for subscription management')
         const { data: newProfile, error: createError } = await supabase
           .from('user_profiles_sub_mgmt')
           .insert({
-            user_id: user.id,
+            id: user.id,
+            email: user.email, // Include email field
             free_poems_generated: 0,
-            is_subscribed: false
+            is_subscribed: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           })
           .select()
           .single()
 
         if (createError) {
-          console.error('Error creating user profile:', createError)
-          setSubscriptionData({
-            freePoems: 0,
-            isSubscribed: false,
-            loading: false
-          })
+          console.error('Error creating user profile in user_profiles_sub_mgmt:', createError)
+          console.error('Create error details:', JSON.stringify(createError))
+          
+          // Fall back to profiles table
+          console.log('Falling back to profiles table')
+          const { data: backupProfile, error: backupError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single()
+            
+          if (backupError) {
+            console.error('Error fetching from backup profiles table:', backupError)
+            setSubscriptionData({
+              freePoems: 0,
+              isSubscribed: false,
+              loading: false
+            })
+          } else {
+            console.log('Using data from backup profiles table:', backupProfile)
+            setSubscriptionData({
+              freePoems: backupProfile.free_poems_generated,
+              isSubscribed: backupProfile.is_subscribed,
+              loading: false
+            })
+          }
           return
         }
         
-        console.log('New profile created:', newProfile)
+        console.log('New profile created in user_profiles_sub_mgmt:', newProfile)
         setSubscriptionData({
           freePoems: newProfile.free_poems_generated,
           isSubscribed: newProfile.is_subscribed,
           loading: false
         })
       } else if (error) {
-        console.error('Error fetching subscription data:', error)
-        setSubscriptionData({
-          freePoems: 0,
-          isSubscribed: false,
-          loading: false
-        })
+        console.error('Error fetching subscription data from user_profiles_sub_mgmt:', error)
+        console.error('Fetch error details:', JSON.stringify(error))
+        
+        // Fall back to profiles table
+        console.log('Falling back to profiles table due to error')
+        const { data: backupProfile, error: backupError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single()
+          
+        if (backupError) {
+          console.error('Error fetching from backup profiles table:', backupError)
+          setSubscriptionData({
+            freePoems: 0,
+            isSubscribed: false,
+            loading: false
+          })
+        } else {
+          console.log('Using data from backup profiles table:', backupProfile)
+          setSubscriptionData({
+            freePoems: backupProfile.free_poems_generated,
+            isSubscribed: backupProfile.is_subscribed,
+            loading: false
+          })
+        }
       } else {
-        console.log('Subscription data fetched:', profile)
+        console.log('Subscription data fetched from user_profiles_sub_mgmt:', profile)
         setSubscriptionData({
           freePoems: profile.free_poems_generated,
           isSubscribed: profile.is_subscribed,
@@ -96,7 +139,7 @@ export const useSubscription = () => {
   useEffect(() => {
     if (!user) return
     
-    console.log('Setting up realtime subscription for user_profiles_sub_mgmt')
+    console.log('Setting up realtime subscription for user_profiles_sub_mgmt table')
     
     const channel = supabase
       .channel('profile-updates')
@@ -105,7 +148,7 @@ export const useSubscription = () => {
           event: '*', 
           schema: 'public', 
           table: 'user_profiles_sub_mgmt',
-          filter: `user_id=eq.${user.id}`
+          filter: `id=eq.${user.id}`
         }, 
         (payload) => {
           console.log('Realtime update received for user profile:', payload)
@@ -171,22 +214,48 @@ export const useSubscription = () => {
 
     try {
       console.log('Incrementing free poems count for user:', user.id)
+      
+      // Try to update in user_profiles_sub_mgmt first
       const { data, error } = await supabase
         .from('user_profiles_sub_mgmt')
         .update({
           free_poems_generated: subscriptionData.freePoems + 1,
           updated_at: new Date().toISOString()
         })
-        .eq('user_id', user.id)
+        .eq('id', user.id)
         .select()
         .single()
 
       if (error) {
-        console.error('Error incrementing free poems:', error)
+        console.error('Error incrementing free poems in user_profiles_sub_mgmt:', error)
+        console.error('Increment error details:', JSON.stringify(error))
+        
+        // Try updating in profiles table as fallback
+        console.log('Trying to increment free poems in profiles table as fallback')
+        const { data: backupData, error: backupError } = await supabase
+          .from('profiles')
+          .update({
+            free_poems_generated: subscriptionData.freePoems + 1,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id)
+          .select()
+          .single()
+          
+        if (backupError) {
+          console.error('Error incrementing free poems in profiles table:', backupError)
+          return
+        }
+        
+        console.log('Free poems incremented successfully in profiles table:', backupData)
+        setSubscriptionData(prev => ({
+          ...prev,
+          freePoems: backupData.free_poems_generated
+        }))
         return
       }
 
-      console.log('Free poems incremented successfully:', data)
+      console.log('Free poems incremented successfully in user_profiles_sub_mgmt:', data)
       setSubscriptionData(prev => ({
         ...prev,
         freePoems: data.free_poems_generated
