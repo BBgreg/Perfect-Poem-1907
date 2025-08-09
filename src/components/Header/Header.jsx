@@ -22,7 +22,10 @@ const Header = () => {
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <motion.div className="flex items-center space-x-3" whileHover={{ scale: 1.02 }}>
+            <motion.div
+              className="flex items-center space-x-3"
+              whileHover={{ scale: 1.02 }}
+            >
               <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-secondary-500 rounded-full flex items-center justify-center">
                 <SafeIcon icon={FiFeather} className="w-5 h-5 text-white" />
               </div>
@@ -61,6 +64,7 @@ const Header = () => {
                       {user.email}
                     </span>
                   </button>
+
                   {showUserMenu && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.95 }}
@@ -74,6 +78,7 @@ const Header = () => {
                         <SafeIcon icon={FiLogOut} className="w-4 h-4" />
                         <span>Sign Out</span>
                       </button>
+
                       {/* Mobile Promotional Link */}
                       <a
                         href="https://ask4appco.com"
@@ -100,13 +105,14 @@ const Header = () => {
                   >
                     <SafeIcon icon={FiExternalLink} className="w-4 h-4" />
                   </motion.a>
-                  
+
                   <button
                     onClick={() => setShowAuthModal(true)}
                     className="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors"
                   >
                     Sign In
                   </button>
+
                   <button
                     onClick={() => setShowAuthModal(true)}
                     className="px-4 py-2 bg-gradient-to-r from-primary-600 to-secondary-600 text-white text-sm font-medium rounded-lg hover:from-primary-700 hover:to-secondary-700 transition-all duration-200"
@@ -120,7 +126,10 @@ const Header = () => {
         </div>
       </header>
 
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
     </>
   )
 }

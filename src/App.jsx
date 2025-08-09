@@ -10,114 +10,28 @@ import PoemForm from './components/PoemGenerator/PoemForm'
 import PoemDisplay from './components/PoemGenerator/PoemDisplay'
 import BlurredPoemDisplay from './components/PoemGenerator/BlurredPoemDisplay'
 import PoemLibrary from './components/PoemLibrary/PoemLibrary'
-import PricingSection from './components/Pricing/PricingSection'
-import PaywallModal from './components/Pricing/PaywallModal'
 import AuthModal from './components/Auth/AuthModal'
 import SaveConfirmation from './components/PoemGenerator/SaveConfirmation'
 import SafeIcon from './common/SafeIcon'
-import * as FiIcons from 'react-icons/fi' 
+import * as FiIcons from 'react-icons/fi'
 
-const { FiEdit3, FiBook, FiHome, FiDollarSign, FiCheck, FiZap } = FiIcons 
+const { FiEdit3, FiBook, FiHome } = FiIcons
 
 function App() {
   const { user, loading: authLoading } = useAuth()
   const { createPoem } = usePoems()
-  const { 
-    freePoems, 
-    isSubscribed, 
-    loading: subscriptionLoading, 
-    incrementFreePoems, 
-    canGeneratePoem, 
-    refreshSubscriptionData 
-  } = useSubscription()
+  const { loading: subscriptionLoading } = useSubscription()
   
   const [currentView, setCurrentView] = useState('create')
   const [currentPoem, setCurrentPoem] = useState(null)
   const [generatingPoem, setGeneratingPoem] = useState(false)
   const [showAuthModal, setShowAuthModal] = useState(false)
-  const [showPaywallModal, setShowPaywallModal] = useState(false)
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false)
   const [confirmationMessage, setConfirmationMessage] = useState("")
   const [confirmationType, setConfirmationType] = useState("success")
   const [confirmationDismissible, setConfirmationDismissible] = useState(false)
   const [unsavedPoem, setUnsavedPoem] = useState(null)
   const [generationError, setGenerationError] = useState('')
-  const [retryCount, setRetryCount] = useState(0)
-
-  // Check for successful subscription on component mount
-  useEffect(() => {
-    const checkStripeSession = async () => {
-      const urlParams = new URLSearchParams(window.location.search)
-      const sessionId = urlParams.get('session_id')
-      
-      if (sessionId) {
-        console.log('Detected Stripe session ID in URL:', sessionId)
-        console.log('Handling subscription activation')
-        
-        // Clear the URL parameter
-        window.history.replaceState({}, document.title, window.location.pathname)
-        
-        // Refresh subscription data immediately
-        await refreshSubscriptionData()
-        
-        // Set up multiple refresh attempts to ensure we catch the webhook update
-        const checkSubscription = async (attempt = 1) => {
-          console.log(`Checking subscription status (attempt ${attempt}/5)`)
-          
-          // Force refresh from database
-          await refreshSubscriptionData()
-          
-          if (isSubscribed) {
-            console.log('Subscription is now active!')
-            setConfirmationMessage("Subscription activated! You now have unlimited access to poem generation.")
-            setConfirmationType("success")
-            setConfirmationDismissible(true)
-            setShowSaveConfirmation(true)
-            setRetryCount(0) // Reset retry counter
-          } else if (attempt < 5) {
-            console.log(`Subscription not yet active, will check again in ${attempt * 2} seconds`)
-            // Exponential backoff for retries
-            setTimeout(() => checkSubscription(attempt + 1), attempt * 2000)
-          } else {
-            console.log('Maximum retry attempts reached, subscription may not be active')
-            setConfirmationMessage("Your payment was processed, but your subscription status is still updating. Please refresh the page in a few moments.")
-            setConfirmationType("success")
-            setConfirmationDismissible(true)
-            setShowSaveConfirmation(true)
-          }
-        }
-        
-        // Start the subscription check sequence after a short delay
-        setTimeout(() => checkSubscription(), 2000)
-      }
-    }
-    
-    if (user) {
-      checkStripeSession()
-    }
-  }, [user])
-
-  // Periodically refresh subscription data when retry counter changes
-  useEffect(() => {
-    if (retryCount > 0 && retryCount <= 5) {
-      const timer = setTimeout(() => {
-        refreshSubscriptionData().then(() => {
-          if (isSubscribed) {
-            console.log('Subscription activated during retry!')
-            setConfirmationMessage("Subscription activated! You now have unlimited access to poem generation.")
-            setConfirmationType("success")
-            setConfirmationDismissible(true)
-            setShowSaveConfirmation(true)
-            setRetryCount(0) // Reset retry counter
-          } else {
-            setRetryCount(prev => prev + 1)
-          }
-        })
-      }, 2000 * retryCount) // Exponential backoff
-      
-      return () => clearTimeout(timer)
-    }
-  }, [retryCount, isSubscribed])
 
   // If we have an unsaved poem and the user logs in, save it
   useEffect(() => {
@@ -155,17 +69,8 @@ function App() {
   const handleGeneratePoem = async (formData) => {
     // Check if user is authenticated
     if (!user) {
-      // For unauthenticated users, show the existing auth modal on first generation
+      // For unauthenticated users, show the auth modal on first generation
       setShowAuthModal(true)
-      return
-    }
-
-    // Force refresh subscription data before checking limits
-    await refreshSubscriptionData()
-
-    // Check subscription status and free poem limit
-    if (!isSubscribed && freePoems >= 3) {
-      setShowPaywallModal(true)
       return
     }
 
@@ -183,7 +88,7 @@ function App() {
         lineCount: formData.lineCount || '',
         lineLength: formData.lineLength || 'Medium'
       }
-
+      
       // Add comprehensive logging
       console.log('Perfect Poem: Sending payload to Edge Function:', payload)
       console.log('Perfect Poem: Payload validation:')
@@ -231,6 +136,7 @@ function App() {
       // Save to database for authenticated users
       console.log('User authenticated, saving poem to database')
       const { data, error } = await createPoem(poemData)
+      
       if (error) {
         console.error('Error saving poem:', error)
       } else {
@@ -243,11 +149,6 @@ function App() {
         setTimeout(() => {
           setShowSaveConfirmation(false)
         }, 3000)
-      }
-
-      // Increment free poems counter for non-subscribed users
-      if (!isSubscribed) {
-        await incrementFreePoems()
       }
 
       setCurrentView('result')
@@ -274,7 +175,6 @@ function App() {
   const navigation = [
     { id: 'home', label: 'Home', icon: FiHome },
     { id: 'create', label: 'Create', icon: FiEdit3 },
-    { id: 'pricing', label: 'Pricing', icon: FiDollarSign },
     { id: 'library', label: 'Library', icon: FiBook },
   ]
 
@@ -292,7 +192,7 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 to-secondary-50">
       <Header />
-
+      
       {user && (
         <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -311,23 +211,6 @@ function App() {
                   <span>{label}</span>
                 </button>
               ))}
-              
-              {/* Subscription status indicator */}
-              {user && (
-                <div className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-gray-100 text-gray-600">
-                  {isSubscribed ? (
-                    <>
-                      <SafeIcon icon={FiCheck} className="w-4 h-4 text-green-500" />
-                      <span className="text-sm">Unlimited</span>
-                    </>
-                  ) : (
-                    <>
-                      <SafeIcon icon={FiZap} className="w-4 h-4 text-yellow-500" />
-                      <span className="text-sm">{3 - freePoems} free poems left</span>
-                    </>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         </nav>
@@ -359,21 +242,8 @@ function App() {
                 loading={generatingPoem}
                 error={generationError}
                 onRetry={handleRetryGeneration}
-                canGenerate={!user || canGeneratePoem}
-                freePoems={freePoems}
-                isSubscribed={isSubscribed}
+                canGenerate={true} // Always allow poem generation
               />
-            </motion.div>
-          )}
-
-          {currentView === 'pricing' && (
-            <motion.div
-              key="pricing"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-            >
-              <PricingSection />
             </motion.div>
           )}
 
@@ -406,9 +276,15 @@ function App() {
               </div>
 
               {user ? (
-                <PoemDisplay poem={currentPoem} showActions={true} />
+                <PoemDisplay
+                  poem={currentPoem}
+                  showActions={true}
+                />
               ) : (
-                <BlurredPoemDisplay poem={currentPoem} onUnlock={handleUnlockPoem} />
+                <BlurredPoemDisplay
+                  poem={currentPoem}
+                  onUnlock={handleUnlockPoem}
+                />
               )}
             </motion.div>
           )}
@@ -429,11 +305,6 @@ function App() {
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
-      />
-
-      <PaywallModal
-        isOpen={showPaywallModal}
-        onClose={() => setShowPaywallModal(false)}
       />
 
       <AnimatePresence>

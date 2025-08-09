@@ -5,7 +5,7 @@ import * as FiIcons from 'react-icons/fi'
 
 const { FiEdit3, FiZap, FiAlertCircle, FiRefreshCw, FiInfo, FiLock } = FiIcons
 
-const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, freePoems = 0, isSubscribed = false }) => {
+const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true }) => {
   const [formData, setFormData] = useState({
     poemType: 'Free Verse',
     rhymePattern: 'None (Free Verse)',
@@ -13,6 +13,7 @@ const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, fre
     lineCount: '',
     lineLength: 'Medium'
   })
+  
   const [showInfoPopup, setShowInfoPopup] = useState(null)
   const [isLineCountLocked, setIsLineCountLocked] = useState(false)
   const [lineCountPlaceholder, setLineCountPlaceholder] = useState(
@@ -20,10 +21,10 @@ const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, fre
   )
 
   const poemTypes = [
-    'Free Verse', 'Sonnet', 'Haiku', 'Limerick', 'Ballad',
-    'Acrostic', 'Cinquain', 'Villanelle', 'Couplet', 'Ode'
+    'Free Verse', 'Sonnet', 'Haiku', 'Limerick', 'Ballad', 'Acrostic', 
+    'Cinquain', 'Villanelle', 'Couplet', 'Ode'
   ]
-
+  
   const poemTypeDescriptions = {
     'Free Verse': 'Poetry without regular rhyme or rhythm, allowing creative expression.',
     'Sonnet': 'A 14-line poem with specific rhyme schemes, often about love or beauty.',
@@ -113,7 +114,7 @@ const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, fre
 
   const handleSubmit = (e) => {
     e.preventDefault()
-    
+
     // Ensure rhymePattern is never an empty string before submission
     const finalFormData = {
       ...formData,
@@ -142,12 +143,16 @@ const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, fre
     if (onRetry) {
       onRetry()
     }
+
     onGenerate(finalFormData)
   }
 
   const handleChange = (field, value) => {
     console.log(`Perfect Poem: Form field changed - ${field}:`, value)
-    setFormData(prev => ({ ...prev, [field]: value }))
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }))
   }
 
   const handleInfoClick = (poemType) => {
@@ -157,12 +162,11 @@ const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, fre
   const getButtonText = () => {
     if (loading) return 'Crafting Your Perfect Poem...'
     if (error) return 'Try Again'
-    if (!canGenerate) return 'Subscribe to Continue'
     return 'Craft My Perfect Poem'
   }
 
   const getButtonDisabled = () => {
-    return loading || !formData.description.trim() || !canGenerate
+    return loading || !formData.description.trim()
   }
 
   return (
@@ -179,11 +183,6 @@ const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, fre
           <h2 className="text-2xl font-bold text-gray-900">Create Your Poem</h2>
           <p className="text-gray-600">
             Describe your vision and let AI craft the perfect verses
-            {!isSubscribed && (
-              <span className="ml-2 text-primary-600 font-medium">
-                ({3 - freePoems} free poems remaining)
-              </span>
-            )}
           </p>
         </div>
       </div>
@@ -199,24 +198,6 @@ const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, fre
             <div className="flex-1">
               <h4 className="text-sm font-medium text-red-800 mb-1">Generation Error</h4>
               <p className="text-sm text-red-700">{error}</p>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {!canGenerate && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4"
-        >
-          <div className="flex items-start space-x-3">
-            <SafeIcon icon={FiZap} className="w-5 h-5 text-yellow-500 mt-0.5" />
-            <div className="flex-1">
-              <h4 className="text-sm font-medium text-yellow-800 mb-1">Free Poems Used</h4>
-              <p className="text-sm text-yellow-700">
-                You've used all 3 free poems! Subscribe for just $2.99/month to continue creating unlimited poems.
-              </p>
             </div>
           </div>
         </motion.div>
@@ -250,6 +231,7 @@ const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, fre
                   <option key={type} value={type}>{type}</option>
                 ))}
               </select>
+
               {/* Info Popup */}
               {showInfoPopup === 'poemTypes' && (
                 <motion.div
@@ -301,18 +283,16 @@ const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, fre
                 value={formData.lineCount}
                 onChange={(e) => handleChange('lineCount', e.target.value)}
                 placeholder={lineCountPlaceholder}
-                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${
-                  isLineCountLocked ? 'bg-gray-100 cursor-not-allowed' : ''
-                }`}
+                className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent ${isLineCountLocked ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 disabled={loading || isLineCountLocked}
                 readOnly={isLineCountLocked}
               />
               <p className="text-xs text-gray-500 mt-1">
-                {isLineCountLocked
-                  ? `Locked to ${formData.lineCount} lines for ${formData.poemType}`
-                  : formData.poemType === 'Couplet'
-                  ? 'For couplets, consider using even numbers for balanced pairs'
-                  : 'Enter the approximate length for your poem or leave it blank and let AI decide'
+                {isLineCountLocked ? 
+                  `Locked to ${formData.lineCount} lines for ${formData.poemType}` : 
+                  formData.poemType === 'Couplet' ?
+                    'For couplets, consider using even numbers for balanced pairs' :
+                    'Enter the approximate length for your poem or leave it blank and let AI decide'
                 }
               </p>
             </div>
@@ -366,15 +346,11 @@ const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, fre
           disabled={getButtonDisabled()}
           whileHover={!getButtonDisabled() ? { scale: 1.02 } : {}}
           whileTap={!getButtonDisabled() ? { scale: 0.98 } : {}}
-          className={`w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 ${
-            canGenerate
-              ? 'bg-gradient-to-r from-primary-600 to-secondary-600 text-white hover:from-primary-700 hover:to-secondary-700'
-              : 'bg-gray-300 text-gray-600'
-          }`}
+          className={`w-full py-4 rounded-xl font-medium text-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 bg-gradient-to-r from-primary-600 to-secondary-600 text-white hover:from-primary-700 hover:to-secondary-700`}
         >
-          <SafeIcon 
-            icon={loading ? FiRefreshCw : (error ? FiRefreshCw : FiZap)} 
-            className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} 
+          <SafeIcon
+            icon={loading ? FiRefreshCw : (error ? FiRefreshCw : FiZap)}
+            className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`}
           />
           <span>{getButtonText()}</span>
         </motion.button>
@@ -382,7 +358,10 @@ const PoemForm = ({ onGenerate, loading, error, onRetry, canGenerate = true, fre
 
       {/* Click outside to close popup */}
       {showInfoPopup && (
-        <div className="fixed inset-0 z-5" onClick={() => setShowInfoPopup(null)} />
+        <div
+          className="fixed inset-0 z-5"
+          onClick={() => setShowInfoPopup(null)}
+        />
       )}
     </motion.div>
   )
